@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>가짜뉴스 팩트체크</title>
+<style>
+  :root {
+    --bg: #f4f6fa; --card: #fff; --text: #1d2433; --muted: #667085; --line: #e3e7ee;
+    --green: #1a9e55; --yellow: #d89a00; --red: #d92d3a; --primary: #2f5bea;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+    line-height: 1.55; }
+  main { max-width: 640px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 8px 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 14px; }
+  textarea { width: 100%; min-height: 180px; resize: vertical; padding: 12px; font: inherit;
+    border: 1px solid var(--line); border-radius: 10px; }
+  textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted); font-size: .85rem; }
+  button, .btn { font: inherit; cursor: pointer; border: 0; border-radius: 10px; padding: 12px 16px;
+    background: var(--primary); color: #fff; font-weight: 600; text-decoration: none; display: inline-block; text-align: center; }
+  button.secondary, .btn.secondary { background: #eef1f7; color: var(--text); }
+  button.block { width: 100%; margin-top: 12px; }
+  button:disabled { opacity: .6; cursor: default; }
+  .error { color: var(--red); font-size: .9rem; margin-top: 8px; min-height: 1.2em; }
+  .hidden { display: none !important; }
+  .notice { background: #fff8e1; border: 1px solid #f3df9b; border-radius: 10px; padding: 10px 12px; font-size: .9rem; margin-bottom: 14px; }
+
+  .loading { text-align: center; padding: 60px 0; color: var(--muted); }
+  .spinner { width: 36px; height: 36px; border: 4px solid var(--line); border-top-color: var(--primary);
+    border-radius: 50%; margin: 0 auto 12px; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .score-card { text-align: center; border-width: 2px; }
+  .score-card.safe { border-color: var(--green); } .score-card.warn { border-color: var(--yellow); } .score-card.danger { border-color: var(--red); }
+  .score { font-size: 4rem; font-weight: 800; line-height: 1.1; }
+  .score small { font-size: 1.2rem; font-weight: 500; color: var(--muted); }
+  .badge { display: inline-block; padding: 4px 16px; border-radius: 999px; color: #fff; font-weight: 700; margin-top: 6px; }
+  .safe .score { color: var(--green); } .safe .badge { background: var(--green); }
+  .warn .score { color: var(--yellow); } .warn .badge { background: var(--yellow); }
+  .danger .score { color: var(--red); } .danger .badge { background: var(--red); }
+  .bar { height: 10px; border-radius: 6px; background: #eceff5; margin-top: 14px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; transition: width .4s; }
+  .safe .bar > i { background: var(--green); } .warn .bar > i { background: var(--yellow); } .danger .bar > i { background: var(--red); }
+
+  h2 { font-size: 1.05rem; margin: 0 0 10px; }
+  ul.checks, ul.reasons { list-style: none; padding: 0; margin: 0; }
+  ul.checks li { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  ul.checks li:last-child { border-bottom: 0; }
+  .icon { flex: none; width: 26px; height: 26px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-weight: 800; font-size: .9rem; }
+  .icon.pass { background: var(--green); } .icon.fail { background: var(--red); } .icon.unknown { background: #9aa3b2; }
+  .check-title { font-weight: 700; } .check-title em { font-style: normal; font-size: .8rem; margin-left: 6px; color: var(--muted); }
+  .check-detail { color: var(--muted); font-size: .9rem; }
+  ul.reasons li { padding: 8px 0 8px 22px; position: relative; }
+  ul.reasons li::before { content: "•"; position: absolute; left: 6px; color: var(--red); font-weight: 800; }
+  .cross { background: #f7f9fd; border-radius: 10px; padding: 12px; margin-top: 10px; }
+  .cross .links, .cross .choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .cross .btn, .cross button { padding: 8px 12px; font-size: .9rem; }
+  .cross button.sel { background: var(--primary); color: #fff; }
+  .actions { display: flex; gap: 8px; } .actions > * { flex: 1; }
+  #toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: #1d2433; color: #fff;
+    padding: 12px 20px; border-radius: 999px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 10; }
+  #toast.show { opacity: 1; }
+  footer { color: var(--muted); font-size: .8rem; text-align: center; margin-top: 24px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .tabs button { flex: 1; background: #eef1f7; color: var(--text); }
+  .tabs button.on { background: var(--primary); color: #fff; }
+  input[type=text] { width: 100%; padding: 12px; font: inherit; border: 1px solid var(--line); border-radius: 10px; }
+  .linkgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .linkgrid .btn { padding: 10px; font-size: .9rem; }
+  .linkgroup { font-weight: 700; margin: 10px 0 6px; font-size: .95rem; }
+  .rep-item { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .rep-item:last-child { border-bottom: 0; }
+  .rep-item b { margin-right: 6px; }
+  .tag { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; }
+  .tag .chip { flex: none; background: #fdecee; color: var(--red); border-radius: 999px; padding: 4px 12px; font-weight: 700; font-size: .9rem; }
+  .tag.none .chip { background: #eaf6ef; color: var(--green); }
+  .tag .check-detail { padding-top: 3px; }
+</style>
+</head>
+<body>
+<main>
+  <section id="screen-keyword" class="hidden">
+    <h1>🔍 가짜뉴스 팩트체크</h1>
+    <p class="sub">논란이 되는 키워드로 보도 현황과 팩트체크를 한눈에.</p>
+    <div class="tabs"><button data-tab="text">본문 진단</button><button class="on" data-tab="kw">키워드 탐색</button></div>
+    <div class="card">
+      <label for="kwInput" class="hidden">키워드</label>
+      <input type="text" id="kwInput" maxlength="60" placeholder="예: 외계인 착륙, 새로운 세금 정책">
+      <div class="error" id="kwError" role="alert"></div>
+      <button class="block" id="kwRun">탐색하기</button>
+    </div>
+  </section>
+
+  <section id="screen-kwresult" class="hidden">
+    <h1 id="kwTitle"></h1>
+    <div class="card">
+      <h2>요약 리포트</h2>
+      <div id="report" class="check-detail">불러오는 중…</div>
+    </div>
+    <div class="card">
+      <h2>직접 확인하기</h2>
+      <div class="check-detail" style="margin-bottom:6px">보도 추이와 입장 차이는 기간별로 검색해 비교해 보세요.</div>
+      <div class="linkgroup">네이버 뉴스</div><div class="linkgrid" id="lkNaver"></div>
+      <div class="linkgroup">구글 뉴스</div><div class="linkgrid" id="lkGoogle"></div>
+      <div class="linkgroup">팩트체크</div><div class="linkgrid" id="lkFact"></div>
+    </div>
+    <div class="card" id="kwTone"></div>
+    <button class="secondary block" id="kwBack">다른 키워드 탐색</button>
+  </section>
+
+  <section id="screen-input">
+    <h1>🔍 가짜뉴스 팩트체크</h1>
+    <p class="sub">의심스러운 정보, 얼마나 믿어도 될까요?</p>
+    <div class="tabs"><button class="on" data-tab="text">본문 진단</button><button data-tab="kw">키워드 탐색</button></div>
+    <div class="card">
+      <label for="input" class="hidden">검증할 내용</label>
+      <textarea id="input" maxlength="3000" placeholder="기사 제목, 단체 대화방에서 받은 글, 또는 URL을 붙여넣으세요.&#10;URL은 주소만 분석하므로 가능하면 본문도 함께 붙여넣어 주세요."></textarea>
+      <div class="row"><span id="count">0 / 3000</span></div>
+      <div class="error" id="error" role="alert"></div>
+      <button class="block" id="run">진단하기</button>
+    </div>
+    <footer>규칙 기반 참고용 분석이며 사실 여부를 확정하지 않습니다.</footer>
+  </section>
+
+  <section id="screen-loading" class="hidden">
+    <div class="loading"><div class="spinner"></div>분석 중입니다…</div>
+  </section>
+
+  <section id="screen-result" class="hidden">
+    <h1>진단 결과</h1>
+    <div id="urlNotice" class="notice hidden">URL 주소만 분석했습니다. 정확한 진단을 위해 기사 본문도 함께 붙여넣어 주세요.</div>
+    <div class="card score-card" id="scoreCard">
+      <div class="score"><span id="scoreNum">0</span><small> / 100</small></div>
+      <div class="badge" id="badge"></div>
+      <div class="bar"><i id="barFill"></i></div>
+    </div>
+
+    <div class="card">
+      <h2>의심되는 허위 정보 유형</h2>
+      <div id="tags"></div>
+    </div>
+
+    <div class="card" id="detail">
+      <h2>세부 분석</h2>
+      <ul class="checks" id="checks"></ul>
+      <div class="cross">
+        <strong>다른 언론사도 이 내용을 다루고 있나요?</strong>
+        <div class="check-detail">검색 결과를 직접 확인한 뒤 선택하면 점수에 반영됩니다.</div>
+        <div class="links">
+          <a class="btn secondary" id="naverLink" target="_blank" rel="noopener noreferrer">네이버 뉴스 검색 ↗</a>
+          <a class="btn secondary" id="googleLink" target="_blank" rel="noopener noreferrer">구글 뉴스 검색 ↗</a>
+        </div>
+        <div class="check-detail" id="kwText"></div>
+        <div class="choices">
+          <button class="secondary" data-cross="yes">다른 언론사도 다룸</button>
+          <button class="secondary" data-cross="no">다루는 곳 없음</button>
+          <button class="secondary" data-cross="unknown">미확인</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>감점 사유 및 주의할 점</h2>
+      <ul class="reasons" id="reasons"></ul>
+    </div>
+
+    <div class="actions">
+      <button class="secondary" id="again">다시 진단</button>
+      <button id="share">결과 공유하기(복사)</button>
+    </div>
+  </section>
+</main>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const STOP = new Set(("그리고 그러나 하지만 그래서 이것 저것 그것 때문 대한 관련 통해 위해 있는 없는 했다 한다 하는 됐다 된다 같은 이런 저런 모든 매우 정말 진짜 여러분 우리 사실 오늘 지금 이번 지난 전부 부탁 공유 확인 내용 뉴스 기사 주세요 합니다 입니다 있습니다 모두에게").split(" "));
+  const JOSA = /(은|는|이|가|을|를|의|에|에서|에게|으로|로|와|과|도|만|까지|부터|라고|이다|입니다|했다|하는|한다)$/;
+
+  const SENSATIONAL = ["충격", "경악", "발칵", "난리", "긴급", "폭로", "소름", "대박", "무조건", "절대", "반드시", "100%", "숨겨진", "은폐", "비밀", "충격적", "믿을 수 없", "끔찍", "멘붕", "역대급", "단독 공개"];
+  const COERCE = ["퍼뜨려", "널리 알려", "공유 부탁", "공유해", "공유 좀", "삭제되기 전", "지우기 전", "언론이 숨", "방송에서 안", "언론은 말", "모르는 사람"];
+  const HEARSAY = /카더라|들었는데|들은 얘기|지인(이|에게|한테)|친구가|라던데|라더라|아는 사람|익명/;
+  const SOURCE = /에 따르면|에 의하면|보도에|기자|발표|연합뉴스|뉴시스|KBS|MBC|SBS|YTN|JTBC|조선일보|한겨레|경향신문|중앙일보|동아일보|통계청|질병관리청|보건복지부|연구팀|논문|출처|보도자료|브리핑/;
+  const URL_RE = /https?:\/\/[^\s)]+|www\.[^\s)]+/gi;
+  const NEWS_DOMAINS = /(yna\.co\.kr|newsis\.com|kbs\.co\.kr|imbc\.com|mbc\.co\.kr|sbs\.co\.kr|ytn\.co\.kr|jtbc\.co\.kr|chosun\.com|hani\.co\.kr|khan\.co\.kr|joongang\.co\.kr|donga\.com|news\.naver\.com|go\.kr|ac\.kr|reuters\.com|bbc\.com|apnews\.com)/i;
+  const SUSPECT_DOMAIN = /(bit\.ly|tinyurl|t\.co|me2\.do|\.xyz|\.top|\.click|\.tk|\.ml)(\/|$|\?)/i;
+
+  const state = { text: "", cross: "unknown", result: null };
+
+  function isUrlOnly(text) {
+    const t = text.trim();
+    return /^(https?:\/\/|www\.)\S+$/i.test(t);
+  }
+
+  function extractKeywords(text) {
+    let src = text;
+    const urls = text.match(URL_RE) || [];
+    src = src.replace(URL_RE, " ");
+    if (isUrlOnly(text) || src.trim().length < 4) {
+      urls.forEach((u) => {
+        try {
+          const url = new URL(/^https?:/i.test(u) ? u : "https://" + u);
+          src += " " + decodeURIComponent(url.pathname).replace(/[-_/.]+/g, " ");
+        } catch (e) { /* 무시 */ }
+      });
+    }
+    const freq = new Map();
+    (src.match(/[가-힣A-Za-z0-9]{2,}/g) || []).forEach((w) => {
+      let word = w.replace(JOSA, "");
+      if (word.length < 2) word = w;
+      if (STOP.has(word) || /^\d+$/.test(word) || SENSATIONAL.some((s) => word.includes(s))) return;
+      freq.set(word, (freq.get(word) || 0) + 1);
+    });
+    return [...freq.entries()]
+      .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+      .slice(0, 4).map((e) => e[0]);
+  }
+
+  function analyze(text, cross) {
+    const urls = text.match(URL_RE) || [];
+    const urlOnly = isUrlOnly(text);
+    const penalties = [];
+    const checks = [];
+
+    // 1) 출처 명시 여부
+    let sourceOk = SOURCE.test(text) || urls.some((u) => NEWS_DOMAINS.test(u));
+    const suspectUrl = urls.find((u) => SUSPECT_DOMAIN.test(u));
+    const hearsay = HEARSAY.test(text);
+    let sourcePen = 0;
+    if (urlOnly) {
+      sourceOk = NEWS_DOMAINS.test(text) && !suspectUrl;
+      if (!sourceOk) {
+        sourcePen = 20;
+        penalties.push({ amount: sourcePen, reason: suspectUrl
+          ? "단축 URL이나 낯선 도메인이라 실제 출처를 알 수 없습니다."
+          : "주소만으로는 신뢰할 만한 언론사·기관인지 확인되지 않습니다." });
+      }
+    } else {
+      if (!sourceOk) {
+        sourcePen = 20;
+        penalties.push({ amount: sourcePen, reason: "언론사, 기관, 작성자 등 구체적인 출처가 글에 명시되어 있지 않습니다." });
+      }
+      if (hearsay) {
+        sourceOk = false;
+        penalties.push({ amount: 10, reason: "'지인이 들었다', '~라더라' 같은 전해 들은 이야기에 의존하고 있습니다." });
+        sourcePen += 10;
+      }
+      if (suspectUrl) {
+        sourceOk = false;
+        penalties.push({ amount: 8, reason: "단축 URL 또는 낯선 도메인 링크가 포함되어 있어 연결 대상을 알 수 없습니다." });
+        sourcePen += 8;
+      }
+    }
+    checks.push({ key: "source", title: "출처 명시 여부", status: sourceOk ? "pass" : "fail",
+      detail: sourceOk ? "출처로 볼 수 있는 표현이나 신뢰할 만한 도메인이 확인됩니다." : "출처가 불분명하거나 전해 들은 이야기 위주입니다." });
+
+    // 2) 근거 제시
+    const types = [];
+    if (/\d+(\.\d+)?\s?(%|퍼센트|명|원|건|개|년|월|일|배|시간|억|만)/.test(text)) types.push("수치");
+    if (/["“”'‘’「」]/.test(text) && /["“][^"”]{4,}["”]|‘[^’]{4,}’|'[^']{4,}'/.test(text)) types.push("인용");
+    if (/연구|조사|통계|논문|실험|자료|데이터|보고서|판결|법안/.test(text)) types.push("자료");
+    if (urls.length) types.push("링크");
+    let evidenceOk = types.length >= 2;
+    if (urlOnly) {
+      evidenceOk = false;
+      penalties.push({ amount: 15, reason: "본문이 없어 수치·인용 같은 근거를 확인할 수 없습니다." });
+    } else if (!evidenceOk) {
+      penalties.push({ amount: 20, reason: types.length === 0
+        ? "수치, 인용, 조사 결과 같은 구체적인 근거가 전혀 제시되지 않았습니다."
+        : "근거가 '" + types[0] + "' 한 가지뿐이라 주장을 뒷받침하기에 부족합니다." });
+    }
+
+    // 4) 교차 보도는 근거 항목 안에서 처리
+    let crossPen = 0;
+    if (cross === "no") {
+      evidenceOk = false;
+      crossPen = 25;
+      penalties.push({ amount: crossPen, reason: "다른 언론사에서 같은 내용을 다루는 곳을 찾지 못했습니다." });
+    }
+    checks.push({ key: "evidence", title: "근거 제시", status: evidenceOk ? "pass" : "fail",
+      detail: evidenceOk ? "확인된 근거 유형: " + types.join(", ") + "." : "주장을 뒷받침하는 근거가 부족합니다." });
+
+    // 3) 어조 중립성
+    const sens = SENSATIONAL.filter((w) => text.includes(w));
+    const coerce = COERCE.filter((w) => text.includes(w));
+    const exclaim = (text.match(/!/g) || []).length;
+    const toneBad = sens.length + coerce.length + (exclaim >= 3 ? 1 : 0);
+    const toneOk = toneBad < 2 && coerce.length === 0;
+    if (sens.length) penalties.push({ amount: Math.min(25, 10 + sens.length * 5), reason: "자극적인 표현이 사용되었습니다: " + sens.slice(0, 3).map((w) => "'" + w + "'").join(", ") + "." });
+    if (coerce.length) penalties.push({ amount: 15, reason: "'" + coerce[0] + "' 처럼 확인 없이 퍼뜨리도록 유도하는 문구가 있습니다." });
+    if (exclaim >= 3) penalties.push({ amount: 8, reason: "느낌표가 " + exclaim + "번 사용되어 감정에 호소하는 어조입니다." });
+    checks.push({ key: "tone", title: "어조 중립성", status: toneOk ? "pass" : "fail",
+      detail: toneOk ? "큰 자극 표현이나 확산 유도 문구가 발견되지 않았습니다." : "자극적이거나 확산을 유도하는 어조가 감지됩니다." });
+
+    // 4) 교차 보도 항목
+    checks.push({ key: "cross", title: "교차 보도", extra: cross === "unknown" ? "점수 미반영" : "",
+      status: cross === "yes" ? "pass" : cross === "no" ? "fail" : "unknown",
+      detail: cross === "yes" ? "다른 언론사도 같은 내용을 보도하고 있다고 확인했습니다."
+        : cross === "no" ? "다른 언론사의 보도를 찾지 못했습니다."
+        : "아직 확인하지 않았습니다. 아래 검색 후 결과를 선택해 주세요." });
+
+    // 허위 정보 유형 태그
+    const tags = [];
+    const clickbait = /알고\s?보니|결국|드디어|이유는|정체는|헉|ㄷㄷ|ㅋㅋ|클릭|확인해\s?보세요|눈을 의심/.test(text);
+    if (sens.length >= 2 || exclaim >= 3 || (sens.length >= 1 && (clickbait || exclaim >= 1))) {
+      tags.push({ key: "abuse", icon: "🔥", label: "자극적 어뷰징형", desc: "클릭과 공유를 노려 제목·내용을 과장했을 가능성이 있습니다." });
+    }
+    const anon = /관계자|단톡방|카톡방|카카오톡|전해진다|알려졌다|알려진 바|지라시|찌라시|확인되지 않|익명|소식통/.test(text);
+    if (!urlOnly && (hearsay || anon || (!SOURCE.test(text) && coerce.length))) {
+      tags.push({ key: "anon", icon: "🕵️", label: "익명 찌라시형", desc: "'관계자', 단톡방 등 출처를 확인할 수 없는 전달 경로에 의존합니다." });
+    }
+    const nowYear = new Date().getFullYear();
+    const years = (text.match(/(?:19|20)\d{2}(?=\s?년|[.\-/]\d{1,2}[.\-/])/g) || []).map(Number);
+    const hasOld = years.some((y) => y <= nowYear - 2);
+    const hasRecent = years.some((y) => y >= nowYear - 1);
+    const recencyWords = /속보|방금|오늘|어제|지금|최근|긴급|금일|이번 주/.test(text);
+    if (!urlOnly && hasOld && !hasRecent && recencyWords) {
+      tags.push({ key: "past", icon: "⏳", label: "과거 맥락 왜곡형", desc: "오래전 날짜가 담긴 내용을 '최근 일'처럼 전달하고 있을 수 있습니다." });
+      penalties.push({ amount: 10, reason: "본문의 날짜(" + Math.min.apply(null, years) + "년)는 오래되었는데 '속보·오늘' 같은 최근 표현이 함께 쓰였습니다." });
+    }
+
+    let score = 100 - penalties.reduce((s, p) => s + p.amount, 0);
+    score = Math.max(0, Math.min(100, Math.round(score)));
+
+    penalties.sort((a, b) => b.amount - a.amount);
+    const reasons = penalties.map((p) => p.reason);
+    const fillers = [];
+    if (!/\d{4}\s?년|\d{1,2}\s?월\s?\d{1,2}\s?일|\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}/.test(text)) fillers.push("작성·발행 시점이 확인되지 않아 오래된 정보일 수 있습니다.");
+    if (cross === "unknown") fillers.push("다른 언론사의 교차 보도 여부가 아직 확인되지 않았습니다.");
+    fillers.push("규칙 기반 분석은 참고용이므로 공식 발표나 신뢰할 수 있는 언론에서 한 번 더 확인하세요.");
+    for (const f of fillers) { if (reasons.length >= 2) break; reasons.push(f); }
+
+    const level = score >= 70 ? { cls: "safe", label: "안심" } : score >= 40 ? { cls: "warn", label: "주의" } : { cls: "danger", label: "위험" };
+    return { score, level, checks, reasons, urlOnly, tags, keywords: extractKeywords(text) };
+  }
+
+  function show(id) {
+    ["screen-input", "screen-loading", "screen-result", "screen-keyword", "screen-kwresult"].forEach((s) => $(s).classList.toggle("hidden", s !== id));
+    window.scrollTo(0, 0);
+  }
+
+  function render() {
+    const r = state.result = analyze(state.text, state.cross);
+    $("scoreNum").textContent = r.score;
+    $("badge").textContent = r.level.label;
+    $("scoreCard").className = "card score-card " + r.level.cls;
+    $("barFill").style.width = r.score + "%";
+    $("urlNotice").classList.toggle("hidden", !r.urlOnly);
+
+    const tagBox = $("tags"); tagBox.textContent = "";
+    (r.tags.length ? r.tags : [{ icon: "✅", label: "뚜렷한 유형 없음", desc: "대표적인 허위 정보 유형 3가지에 해당하는 신호가 발견되지 않았습니다.", none: true }]).forEach((t) => {
+      const row = document.createElement("div"); row.className = "tag" + (t.none ? " none" : "");
+      const chip = document.createElement("span"); chip.className = "chip"; chip.textContent = t.icon + " " + t.label;
+      const desc = document.createElement("div"); desc.className = "check-detail"; desc.textContent = t.desc;
+      row.append(chip, desc); tagBox.appendChild(row);
+    });
+
+    const checks = $("checks"); checks.textContent = "";
+    r.checks.forEach((c) => {
+      const li = document.createElement("li");
+      const icon = document.createElement("span");
+      icon.className = "icon " + c.status;
+      icon.textContent = c.status === "pass" ? "✓" : c.status === "fail" ? "✕" : "?";
+      icon.setAttribute("aria-label", c.status === "pass" ? "Pass" : c.status === "fail" ? "Fail" : "미확인");
+      const box = document.createElement("div");
+      const t = document.createElement("div"); t.className = "check-title";
+      t.textContent = c.title + " · " + (c.status === "pass" ? "Pass" : c.status === "fail" ? "Fail" : "미확인");
+      if (c.extra) { const em = document.createElement("em"); em.textContent = "(" + c.extra + ")"; t.appendChild(em); }
+      const d = document.createElement("div"); d.className = "check-detail"; d.textContent = c.detail;
+      box.append(t, d); li.append(icon, box); checks.appendChild(li);
+    });
+
+    const reasons = $("reasons"); reasons.textContent = "";
+    r.reasons.forEach((x) => { const li = document.createElement("li"); li.textContent = x; reasons.appendChild(li); });
+
+    const q = r.keywords.join(" ") || state.text.slice(0, 30);
+    $("naverLink").href = "https://search.naver.com/search.naver?where=news&query=" + encodeURIComponent(q);
+    $("googleLink").href = "https://www.google.com/search?tbm=nws&q=" + encodeURIComponent(q);
+    $("kwText").textContent = "검색 키워드: " + q;
+    document.querySelectorAll("[data-cross]").forEach((b) => b.classList.toggle("sel", b.dataset.cross === state.cross));
+  }
+
+  function summary() {
+    const r = state.result;
+    const core = r.reasons[0].replace(/\s+/g, " ");
+    const head = "[팩트체크] " + r.score + "점 " + r.level.label + " - ";
+    const tail = " (가짜뉴스 팩트체크)";
+    let text = head + core + tail;
+    if (text.length > 150) {
+      const room = 150 - head.length - 1;
+      text = head + core.slice(0, Math.max(0, room)) + "…";
+    }
+    return text.slice(0, 150);
+  }
+
+  function toast(msg) {
+    const t = $("toast");
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => t.classList.remove("show"), 2000);
+  }
+
+  function copy(text) {
+    const fallback = () => {
+      const ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      let ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      return ok;
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).then(() => true, () => fallback());
+    }
+    return Promise.resolve(fallback());
+  }
+
+  $("input").addEventListener("input", (e) => {
+    $("count").textContent = e.target.value.length + " / 3000";
+    $("error").textContent = "";
+  });
+
+  $("run").addEventListener("click", () => {
+    const text = $("input").value.trim();
+    if (text.length < 2) { $("error").textContent = "검증할 내용을 입력해 주세요."; return; }
+    state.text = text; state.cross = "unknown";
+    show("screen-loading");
+    setTimeout(() => { render(); show("screen-result"); }, 600);
+  });
+
+  document.querySelectorAll("[data-cross]").forEach((b) => b.addEventListener("click", () => {
+    state.cross = b.dataset.cross; render();
+  }));
+
+  $("share").addEventListener("click", () => {
+    const text = summary();
+    copy(text).then((ok) => toast(ok ? "클립보드에 복사되었습니다" : "복사에 실패했습니다. 직접 선택해 복사해 주세요."));
+  });
+
+  $("again").addEventListener("click", () => { show("screen-input"); $("input").focus(); });
+
+  // ===== 키워드 탐색 =====
+  // 백엔드(서버리스)를 배포했다면 주소를 넣으세요. 비워 두면 링크 허브만 표시됩니다.
+  // 요청: POST {keyword} / 응답: {summary, trend:[{label,count}], positions:[{outlet,stance,summary}], factchecks:[{source,verdict,url}]}
+  const REPORT_API_URL = "";
+
+  document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => {
+    show(b.dataset.tab === "kw" ? "screen-keyword" : "screen-input");
+    if (b.dataset.tab === "kw") $("kwInput").focus();
+  }));
+
+  function addLinks(box, items) {
+    box.textContent = "";
+    items.forEach(([label, href]) => {
+      const a = document.createElement("a");
+      a.className = "btn secondary"; a.textContent = label + " ↗"; a.href = href;
+      a.target = "_blank"; a.rel = "noopener noreferrer"; box.appendChild(a);
+    });
+  }
+
+  function safeUrl(u) { return /^https?:\/\//i.test(u) ? u : ""; }
+
+  function item(parts) {
+    const d = document.createElement("div"); d.className = "rep-item";
+    parts.forEach((p) => {
+      if (p.href) { const a = document.createElement("a"); a.href = p.href; a.textContent = p.text; a.target = "_blank"; a.rel = "noopener noreferrer"; d.appendChild(a); }
+      else { const e = document.createElement(p.b ? "b" : "span"); e.textContent = p.text; d.appendChild(e); }
+    });
+    return d;
+  }
+
+  function renderReport(data) {
+    const box = $("report"); box.textContent = "";
+    if (data.summary) { const p = document.createElement("p"); p.textContent = String(data.summary); box.appendChild(p); }
+    const sec = (title, list, make) => {
+      if (!Array.isArray(list) || !list.length) return;
+      const h = document.createElement("div"); h.className = "linkgroup"; h.textContent = title; box.appendChild(h);
+      list.slice(0, 10).forEach((x) => box.appendChild(make(x)));
+    };
+    sec("보도 추이", data.trend, (x) => item([{ b: 1, text: String(x.label) }, { text: x.count + "건" }]));
+    sec("언론별 입장", data.positions, (x) => item([{ b: 1, text: String(x.outlet) + " (" + String(x.stance) + ")" }, { text: String(x.summary || "") }]));
+    sec("팩트체크 결과", data.factchecks, (x) => item([{ b: 1, text: String(x.source) + ": " }, safeUrl(x.url) ? { text: String(x.verdict), href: safeUrl(x.url) } : { text: String(x.verdict) }]));
+  }
+
+  function runKeyword(kw) {
+    const q = encodeURIComponent(kw);
+    $("kwTitle").textContent = "“" + kw + "” 탐색 결과";
+    addLinks($("lkNaver"), [["전체", "https://search.naver.com/search.naver?where=news&query=" + q],
+      ["최근 24시간", "https://search.naver.com/search.naver?where=news&query=" + q + "&nso=so%3Ar%2Cp%3A1d"],
+      ["최근 1주", "https://search.naver.com/search.naver?where=news&query=" + q + "&nso=so%3Ar%2Cp%3A1w"],
+      ["최근 1개월", "https://search.naver.com/search.naver?where=news&query=" + q + "&nso=so%3Ar%2Cp%3A1m"]]);
+    addLinks($("lkGoogle"), [["전체", "https://www.google.com/search?tbm=nws&q=" + q],
+      ["최근 24시간", "https://www.google.com/search?tbm=nws&q=" + q + "&tbs=qdr:d"],
+      ["최근 1주", "https://www.google.com/search?tbm=nws&q=" + q + "&tbs=qdr:w"],
+      ["최근 1개월", "https://www.google.com/search?tbm=nws&q=" + q + "&tbs=qdr:m"]]);
+    addLinks($("lkFact"), [["구글 팩트체크 탐색기", "https://toolbox.google.com/factcheck/explorer/search/" + q + ";hl=ko"],
+      ["SNU 팩트체크", "https://www.google.com/search?q=" + q + "+site:factcheck.snu.ac.kr"]]);
+
+    const r = analyze(kw, "unknown");
+    const tone = $("kwTone"); tone.textContent = "";
+    const h = document.createElement("h2"); h.textContent = "키워드 표현 점검"; tone.appendChild(h);
+    const p = document.createElement("div"); p.className = "check-detail";
+    const tc = r.checks.find((c) => c.key === "tone");
+    p.textContent = tc.status === "pass" ? "키워드에 자극적인 표현은 보이지 않습니다. 다만 키워드만으로는 사실 여부를 판단할 수 없습니다."
+      : "자극적인 표현이 포함되어 있습니다. 같은 사건을 중립적인 단어로 바꿔 검색하면 더 정확한 결과를 볼 수 있습니다.";
+    tone.appendChild(p);
+
+    const rep = $("report");
+    if (!REPORT_API_URL) {
+      rep.textContent = "자동 요약 리포트는 준비 중입니다. 아래 링크로 보도 추이와 팩트체크를 직접 확인해 주세요.";
+    } else {
+      rep.textContent = "불러오는 중…";
+      const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 15000);
+      fetch(REPORT_API_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keyword: kw }), signal: ctl.signal })
+        .then((res) => { if (!res.ok) throw new Error(res.status); return res.json(); })
+        .then(renderReport)
+        .catch(() => { rep.textContent = "요약 리포트를 불러오지 못했습니다. 아래 링크로 직접 확인해 주세요."; })
+        .finally(() => clearTimeout(to));
+    }
+    show("screen-kwresult");
+  }
+
+  $("kwRun").addEventListener("click", () => {
+    const kw = $("kwInput").value.trim().replace(/\s+/g, " ");
+    if (kw.length < 2) { $("kwError").textContent = "키워드를 2자 이상 입력해 주세요."; return; }
+    $("kwError").textContent = ""; runKeyword(kw);
+  });
+  $("kwInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("kwRun").click(); });
+  $("kwBack").addEventListener("click", () => { show("screen-keyword"); $("kwInput").focus(); });
+
+  // 테스트용: 콘솔에서 FactCheck.analyze("...") 로 확인 가능
+  window.FactCheck = { analyze, summary: () => summary() };
+})();
+</script>
+</body>
+</html>
